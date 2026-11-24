@@ -49,34 +49,33 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    const keyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID?.trim();
+    const keySecret = process.env.RAZORPAY_KEY_SECRET?.trim();
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+    const missingVariables = [
+      !keyId && "NEXT_PUBLIC_RAZORPAY_KEY_ID",
+      !keySecret && "RAZORPAY_KEY_SECRET",
+      !serviceRoleKey && "SUPABASE_SERVICE_ROLE_KEY",
+    ].filter((variable): variable is string => Boolean(variable));
+
+    if (!keyId || !keySecret || !serviceRoleKey) {
       return NextResponse.json(
         {
-          error: "Secure payment updates are not configured on the server.",
+          error: `Missing Vercel environment variable(s): ${missingVariables.join(", ")}.`,
           missingConfig: true,
         },
         { status: 503 }
       );
     }
+
     const adminClient = createAdminClient();
     if (!adminClient) {
       return NextResponse.json(
-        { error: "Secure payment updates are not configured on the server.", missingConfig: true },
-        { status: 503 }
-      );
-    }
-
-    const keyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
-    const keySecret = process.env.RAZORPAY_KEY_SECRET;
-
-    if (!keyId || !keySecret || keyId.trim() === "" || keySecret.trim() === "") {
-      return NextResponse.json(
         {
-          error:
-            "Razorpay API keys are not configured on the server.",
+          error: "Could not initialize Supabase server credentials. Check SUPABASE_SERVICE_ROLE_KEY.",
           missingConfig: true,
         },
-        { status: 400 }
+        { status: 503 }
       );
     }
 

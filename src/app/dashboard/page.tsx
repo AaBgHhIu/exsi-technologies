@@ -125,7 +125,7 @@ export default function StudentDashboardPage() {
       if (!result.success) {
         setPaymentError(
           result.missingConfig
-            ? "Payment setup is incomplete. The server needs Razorpay credentials and the Supabase service role key."
+            ? result.error || "Payment setup is incomplete on the server."
             : result.error || "Payment was cancelled or failed."
         );
         setProcessingSlug(null);

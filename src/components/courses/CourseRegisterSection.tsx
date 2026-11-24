@@ -131,9 +131,7 @@ export default function CourseRegisterSection({
         setStatus("error");
         if (result.missingConfig) {
           setMissingRazorpayConfig(true);
-          setErrorMessage(
-            "Payment setup is incomplete. The server needs Razorpay credentials and the Supabase service role key."
-          );
+          setErrorMessage(result.error || "Payment setup is incomplete on the server.");
         } else {
           setErrorMessage(result.error || "Payment was not completed.");
         }
