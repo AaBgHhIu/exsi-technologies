@@ -1,24 +1,68 @@
 import { NextResponse } from "next/server";
 import Razorpay from "razorpay";
-import { getCourseBySlug } from "@/config/courses";
-
-function parseFee(feeString: string): number | null {
-  const cleaned = feeString.replace(/[^\d.]/g, "");
-  const parsed = parseFloat(cleaned);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-}
+import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const { courseSlug, studentEmail, studentName } = body;
-    const course = typeof courseSlug === "string" ? getCourseBySlug(courseSlug) : undefined;
-    const numericAmount = course && !course.enquiryOnly ? parseFee(course.fee) : null;
+    const supabase = createClient();
+    if (!supabase) {
+      return NextResponse.json({ error: "Supabase is not configured." }, { status: 503 });
+    }
 
-    if (!course || !numericAmount) {
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+    if (userError || !user) {
+      return NextResponse.json({ error: "Sign in before starting checkout." }, { status: 401 });
+    }
+
+    const body = await req.json();
+    const enrollmentId = typeof body.enrollmentId === "string" ? body.enrollmentId : "";
+    if (!enrollmentId) {
+      return NextResponse.json({ error: "An enrollment ID is required." }, { status: 400 });
+    }
+
+    const { data: enrollment, error: enrollmentError } = await supabase
+      .from("enrollments")
+      .select("id,status,order_id,courses!inner(slug,title,fee,is_active)")
+      .eq("id", enrollmentId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (enrollmentError) {
+      console.error("Could not load enrollment for payment:", enrollmentError.message);
       return NextResponse.json(
-        { error: "This programme is available by enquiry; payment details are not currently configured." },
-        { status: 400 }
+        { error: "Could not load your registration for checkout." },
+        { status: 500 }
+      );
+    }
+
+    const course = Array.isArray(enrollment?.courses)
+      ? enrollment.courses[0]
+      : enrollment?.courses;
+    if (!enrollment || !course || !course.is_active || enrollment.status !== "pending") {
+      return NextResponse.json(
+        { error: "This registration is unavailable for payment." },
+        { status: 404 }
+      );
+    }
+
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      return NextResponse.json(
+        {
+          error: "Secure payment updates are not configured on the server.",
+          missingConfig: true,
+        },
+        { status: 503 }
+      );
+    }
+    const adminClient = createAdminClient();
+    if (!adminClient) {
+      return NextResponse.json(
+        { error: "Secure payment updates are not configured on the server.", missingConfig: true },
+        { status: 503 }
       );
     }
 
@@ -29,19 +73,51 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           error:
-            "Razorpay API Keys are not configured in .env.local (NEXT_PUBLIC_RAZORPAY_KEY_ID & RAZORPAY_KEY_SECRET).",
+            "Razorpay API keys are not configured on the server.",
           missingConfig: true,
         },
         { status: 400 }
       );
     }
 
-    const amountInPaise = Math.round(numericAmount * 100);
+    const amountInPaise = course.fee * 100;
+    if (!Number.isSafeInteger(amountInPaise) || amountInPaise <= 0) {
+      return NextResponse.json({ error: "Course fee is not valid for payment." }, { status: 400 });
+    }
 
     const razorpay = new Razorpay({
       key_id: keyId,
       key_secret: keySecret,
     });
+
+    if (enrollment.order_id) {
+      const existingOrder = await razorpay.orders.fetch(enrollment.order_id);
+      if (
+        existingOrder.notes?.enrollmentId !== enrollment.id ||
+        existingOrder.notes?.userId !== user.id ||
+        existingOrder.notes?.courseSlug !== course.slug ||
+        existingOrder.amount !== amountInPaise ||
+        existingOrder.currency !== "INR"
+      ) {
+        return NextResponse.json(
+          { error: "The existing payment order does not match this registration." },
+          { status: 409 }
+        );
+      }
+      if (existingOrder.status === "paid") {
+        return NextResponse.json(
+          { error: "Payment was already received. Refresh your student dashboard." },
+          { status: 409 }
+        );
+      }
+
+      return NextResponse.json({
+        orderId: existingOrder.id,
+        amount: existingOrder.amount,
+        currency: existingOrder.currency,
+        keyId,
+      });
+    }
 
     const receipt = `rcpt_${Date.now().toString().slice(-8)}`;
 
@@ -50,12 +126,29 @@ export async function POST(req: Request) {
       currency: "INR",
       receipt,
       notes: {
-        courseTitle: course.title,
+        enrollmentId: enrollment.id,
+        userId: user.id,
         courseSlug: course.slug,
-        studentEmail: studentEmail || "",
-        studentName: studentName || "",
       },
     });
+
+    const { error: orderSaveError } = await adminClient
+      .from("enrollments")
+      .update({ order_id: order.id })
+      .eq("id", enrollment.id)
+      .eq("user_id", user.id)
+      .eq("status", "pending")
+      .is("order_id", null)
+      .select("id")
+      .single();
+
+    if (orderSaveError) {
+      console.error("Could not save Razorpay order on enrollment:", orderSaveError.message);
+      return NextResponse.json(
+        { error: "Could not associate the payment order with your registration." },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({
       orderId: order.id,

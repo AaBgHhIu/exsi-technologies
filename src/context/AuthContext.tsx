@@ -2,7 +2,6 @@
 
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { saveNewRegistration } from "@/lib/registrations";
 
 export const ADMIN_EMAILS = [
   "tbabhimanue06@gmail.com",
@@ -33,7 +32,7 @@ export interface EnrolledCourseItem {
   duration: string;
   fee: string;
   batchStart: string;
-  status: "approved" | "pending";
+  status: "approved" | "pending" | "rejected";
   registeredAt: string;
   meetingLink?: string;
   materialsUrl?: string;
@@ -50,8 +49,8 @@ interface AuthContextType {
   isAdmin: boolean;
   enrollments: EnrolledCourseItem[];
   hasRealGoogleConfigured: boolean;
+  refreshEnrollments: () => Promise<void>;
   signInWithGoogle: (customData?: { name?: string; email?: string }) => Promise<void>;
-  signInWithGoogleCredential: (jwtCredential: string) => void;
   signInWithEmail: (email: string, name?: string) => Promise<void>;
   signOut: () => Promise<void>;
   registerCourse: (course: {
@@ -60,36 +59,85 @@ interface AuthContextType {
     duration: string;
     fee: string;
     batchStart: string;
+    studentName?: string;
     college?: string;
     phone?: string;
     year?: string;
-    status?: "approved" | "pending";
-    paymentId?: string;
-    orderId?: string;
-    paymentMethod?: "online_razorpay" | "offline";
-  }) => boolean;
+  }) => Promise<EnrolledCourseItem>;
   isRegistered: (slug: string) => boolean;
-  removeRegistration: (slug: string) => void;
-  markCoursePaid: (slug: string, paymentId: string, orderId?: string) => void;
+  removeRegistration: (slug: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-function decodeJwtPayload(token: string) {
-  try {
-    const base64Url = token.split(".")[1];
-    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-    const jsonPayload = decodeURIComponent(
-      atob(base64)
-        .split("")
-        .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
-        .join("")
-    );
-    return JSON.parse(jsonPayload);
-  } catch (err) {
-    console.error("Failed to decode JWT payload:", err);
-    return null;
-  }
+interface EnrollmentDbRow {
+  id: string;
+  status: "approved" | "pending" | "rejected";
+  created_at: string;
+  student_name: string;
+  email: string;
+  phone: string;
+  college: string;
+  year: string;
+  fee_amount: number;
+  payment_id: string | null;
+  payment_method: "online_razorpay" | "offline" | null;
+  courses:
+    | {
+        slug: string;
+        title: string;
+        duration: string;
+        batch_start_date: string;
+        course_private:
+          | { meeting_link: string; materials_url: string }
+          | { meeting_link: string; materials_url: string }[]
+          | null;
+      }
+    | {
+        slug: string;
+        title: string;
+        duration: string;
+        batch_start_date: string;
+        course_private:
+          | { meeting_link: string; materials_url: string }
+          | { meeting_link: string; materials_url: string }[]
+          | null;
+      }[]
+    | null;
+}
+
+function mapEnrollment(row: EnrollmentDbRow): EnrolledCourseItem {
+  const course = Array.isArray(row.courses) ? row.courses[0] : row.courses;
+  const privateData = Array.isArray(course?.course_private)
+    ? course.course_private[0]
+    : course?.course_private;
+
+  return {
+    id: row.id,
+    courseSlug: course?.slug || "",
+    courseTitle: course?.title || "Course",
+    duration: course?.duration || "",
+    fee: new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: "INR",
+      maximumFractionDigits: 0,
+    }).format(row.fee_amount),
+    batchStart: course?.batch_start_date
+      ? new Date(`${course.batch_start_date}T00:00:00`).toLocaleDateString("en-IN", {
+          month: "short",
+          day: "numeric",
+        })
+      : "",
+    status: row.status,
+    registeredAt: row.created_at.slice(0, 10),
+    meetingLink: privateData?.meeting_link || undefined,
+    materialsUrl: privateData?.materials_url || undefined,
+    college: row.college,
+    phone: row.phone,
+    year: row.year,
+    paymentId: row.payment_id || undefined,
+    paymentMethod: row.payment_method || undefined,
+  };
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -97,30 +145,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [enrollments, setEnrollments] = useState<EnrolledCourseItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const hasRealGoogleConfigured = Boolean(
-    (googleClientId && googleClientId.length > 10 && !googleClientId.includes("your-google-client-id")) ||
-    (supabaseUrl && !supabaseUrl.includes("your-project") && supabaseUrl.startsWith("https://"))
+    supabaseUrl &&
+      supabaseAnonKey &&
+      !supabaseUrl.includes("your-project") &&
+      supabaseUrl.startsWith("https://")
   );
 
   const isAdmin = checkIsAdmin(user?.email);
 
-  // Initialize auth state from localStorage and Supabase session
+  // Initialize from Supabase; local storage remains a demo-only fallback.
   useEffect(() => {
+    const supabase = createClient();
+
     try {
       const storedUser = localStorage.getItem("exsi_student_user");
-      if (storedUser) {
+      if (storedUser && !supabase) {
         const parsed = JSON.parse(storedUser);
         setUser(parsed);
-        loadEnrollmentsForUser(parsed.email);
+        void loadEnrollmentsForUser(parsed);
       }
     } catch {
       // ignore JSON parse errors
     }
 
     // Check Supabase session if configured
-    const supabase = createClient();
     if (supabase) {
       supabase.auth
         .getSession()
@@ -143,8 +194,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             };
             setUser(su);
             localStorage.setItem("exsi_student_user", JSON.stringify(su));
-            loadEnrollmentsForUser(su.email);
+            void loadEnrollmentsForUser(su);
           } else {
+            setUser(null);
+            setEnrollments([]);
             setLoading(false);
           }
         })
@@ -168,10 +221,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           };
           setUser(su);
           localStorage.setItem("exsi_student_user", JSON.stringify(su));
-          loadEnrollmentsForUser(su.email);
-        } else if (!storedUserExists()) {
+          void loadEnrollmentsForUser(su);
+        } else {
           setUser(null);
           setEnrollments([]);
+          setLoading(false);
         }
       });
 
@@ -183,17 +237,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(false);
   }, []);
 
-  function storedUserExists(): boolean {
-    try {
-      return !!localStorage.getItem("exsi_student_user");
-    } catch {
-      return false;
-    }
-  }
+  async function loadEnrollmentsForUser(authUser: StudentUser) {
+    const supabase = createClient();
+    if (supabase) {
+      const { data, error } = await supabase
+        .from("enrollments")
+        .select(
+          "id,status,created_at,student_name,email,phone,college,year,fee_amount,payment_id,payment_method,courses!inner(slug,title,duration,batch_start_date,course_private(meeting_link,materials_url))"
+        )
+        .eq("user_id", authUser.id)
+        .order("created_at", { ascending: false });
 
-  function loadEnrollmentsForUser(email: string) {
+      if (error) {
+        console.error("Failed to load Supabase enrollments:", error.message);
+        setEnrollments([]);
+      } else {
+        setEnrollments((data || []).map((row) => mapEnrollment(row as EnrollmentDbRow)));
+      }
+      setLoading(false);
+      return;
+    }
+
     try {
-      const key = `exsi_enrollments_${email.toLowerCase()}`;
+      const key = `exsi_enrollments_${authUser.email.toLowerCase()}`;
       const saved = localStorage.getItem(key);
       if (saved) {
         setEnrollments(JSON.parse(saved));
@@ -208,26 +274,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  // Real Google Sign-In via Google Identity Services JWT token
-  const signInWithGoogleCredential = (jwtCredential: string) => {
-    const payload = decodeJwtPayload(jwtCredential);
-    if (!payload || !payload.email) {
-      console.error("Invalid Google JWT Credential");
-      return;
+  const refreshEnrollments = async () => {
+    if (user) {
+      await loadEnrollmentsForUser(user);
     }
-
-    const realGoogleUser: StudentUser = {
-      id: payload.sub || "google-" + Math.random().toString(36).substring(2, 9),
-      name: payload.name || payload.email.split("@")[0],
-      email: payload.email.toLowerCase(),
-      image: payload.picture,
-      provider: "google",
-    };
-
-    setUser(realGoogleUser);
-    localStorage.setItem("exsi_student_user", JSON.stringify(realGoogleUser));
-    loadEnrollmentsForUser(realGoogleUser.email);
-    setLoading(false);
   };
 
   // Google Sign-In Handler
@@ -278,7 +328,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     setUser(googleUser);
     localStorage.setItem("exsi_student_user", JSON.stringify(googleUser));
-    loadEnrollmentsForUser(googleUser.email);
+    void loadEnrollmentsForUser(googleUser);
     setLoading(false);
   };
 
@@ -294,7 +344,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     setUser(emailUser);
     localStorage.setItem("exsi_student_user", JSON.stringify(emailUser));
-    loadEnrollmentsForUser(emailUser.email);
+    void loadEnrollmentsForUser(emailUser);
     setLoading(false);
   };
 
@@ -304,8 +354,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (supabase) {
       try {
         await supabase.auth.signOut();
-      } catch {
-        // ignore
+      } catch (error) {
+        console.error("Failed to sign out of Supabase:", error);
       }
     }
     localStorage.removeItem("exsi_student_user");
@@ -314,120 +364,112 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   // Register Course
-  const registerCourse = (course: {
+  const registerCourse = async (course: {
     slug: string;
     title: string;
     duration: string;
     fee: string;
     batchStart: string;
+    studentName?: string;
     college?: string;
     phone?: string;
     year?: string;
-    status?: "approved" | "pending";
-    paymentId?: string;
-    orderId?: string;
-    paymentMethod?: "online_razorpay" | "offline";
-  }): boolean => {
-    if (!user) return false;
-
-    const key = `exsi_enrollments_${user.email.toLowerCase()}`;
-    const current = [...enrollments];
-
-    const existingIndex = current.findIndex((c) => c.courseSlug === course.slug);
-    if (existingIndex >= 0) {
-      return true;
+  }) => {
+    if (!user) {
+      throw new Error("Sign in with Google before registering for a course.");
     }
 
-    const initialStatus = course.status || "pending";
+    const supabase = createClient();
+    if (!supabase) {
+      throw new Error("Course registration requires a configured Supabase project.");
+    }
 
-    const newEnrollment: EnrolledCourseItem = {
-      id: `enr-${Date.now()}`,
-      courseSlug: course.slug,
-      courseTitle: course.title,
-      duration: course.duration,
-      fee: course.fee,
-      batchStart: course.batchStart,
-      status: initialStatus,
-      registeredAt: new Date().toISOString().split("T")[0],
-      college: course.college || user.college || "Engineering College",
-      phone: course.phone || user.phone || "",
-      year: course.year || user.year || "3rd Year",
-      paymentId: course.paymentId,
-      paymentMethod: course.paymentMethod,
-    };
+    const { data: courseRow, error: courseError } = await supabase
+      .from("courses")
+      .select("id,fee")
+      .eq("slug", course.slug)
+      .eq("is_active", true)
+      .single();
 
-    const updated = [newEnrollment, ...current];
-    setEnrollments(updated);
-    try {
-      localStorage.setItem(key, JSON.stringify(updated));
+    if (courseError || !courseRow) {
+      throw new Error(courseError?.message || "This course is not available for registration.");
+    }
 
-      // Also save to global admin registration database
-      saveNewRegistration({
-        id: newEnrollment.id,
-        studentName: user.name || user.email.split("@")[0],
+    const selection =
+      "id,status,created_at,student_name,email,phone,college,year,fee_amount,payment_id,payment_method,courses!inner(slug,title,duration,batch_start_date,course_private(meeting_link,materials_url))";
+    const { data: existing, error: existingError } = await supabase
+      .from("enrollments")
+      .select(selection)
+      .eq("user_id", user.id)
+      .eq("course_id", courseRow.id)
+      .maybeSingle();
+
+    if (existingError) {
+      throw new Error(`Could not check your existing registration: ${existingError.message}`);
+    }
+
+    if (existing) {
+      const existingEnrollment = mapEnrollment(existing as EnrollmentDbRow);
+      setEnrollments((current) => [
+        existingEnrollment,
+        ...current.filter((item) => item.id !== existingEnrollment.id),
+      ]);
+      return existingEnrollment;
+    }
+
+    const { data, error } = await supabase
+      .from("enrollments")
+      .insert({
+        user_id: user.id,
+        course_id: courseRow.id,
+        status: "pending",
+        student_name: course.studentName || user.name,
         email: user.email,
         phone: course.phone || user.phone || "",
-        college: course.college || user.college || "Engineering College",
+        college: course.college || user.college || "",
         year: course.year || user.year || "3rd Year",
-        courseTitle: course.title,
-        courseSlug: course.slug,
-        fee: course.fee,
-        status: initialStatus,
-        paymentId: course.paymentId,
-        orderId: course.orderId,
-        paymentMethod: course.paymentMethod,
-        date: new Date().toLocaleDateString("en-IN", {
-          day: "numeric",
-          month: "short",
-          year: "numeric",
-        }),
-        meetingLink: "https://meet.google.com/exsi-vlsi-live",
-        materialsUrl: "https://drive.google.com/drive/folders/exsi-verilog-resources",
-      });
-    } catch {
-      // ignore
+        fee_amount: courseRow.fee,
+      })
+      .select(selection)
+      .single();
+
+    if (error || !data) {
+      throw new Error(
+        `Could not create your registration: ${error?.message || "No record returned."}`
+      );
     }
-    return true;
+
+    const newEnrollment = mapEnrollment(data as EnrollmentDbRow);
+    setEnrollments((current) => [newEnrollment, ...current]);
+    return newEnrollment;
   };
 
   const isRegistered = (slug: string): boolean => {
     return enrollments.some((c) => c.courseSlug === slug);
   };
 
-  const removeRegistration = (slug: string) => {
-    if (!user) return;
-    const key = `exsi_enrollments_${user.email.toLowerCase()}`;
-    const filtered = enrollments.filter((c) => c.courseSlug !== slug);
-    setEnrollments(filtered);
-    try {
-      localStorage.setItem(key, JSON.stringify(filtered));
-    } catch {
-      // ignore
+  const removeRegistration = async (slug: string) => {
+    if (!user) {
+      throw new Error("Sign in before cancelling a registration.");
     }
-  };
+    const enrollment = enrollments.find((item) => item.courseSlug === slug);
+    if (!enrollment) return;
 
-  const markCoursePaid = (slug: string, paymentId: string, orderId?: string) => {
-    if (!user) return;
-    const key = `exsi_enrollments_${user.email.toLowerCase()}`;
-    const updated = enrollments.map((c) => {
-      if (c.courseSlug === slug) {
-        return {
-          ...c,
-          status: "approved" as const,
-          paymentId,
-          paymentMethod: "online_razorpay" as const,
-          meetingLink: c.meetingLink || "https://meet.google.com/exsi-vlsi-live",
-          materialsUrl: c.materialsUrl || "https://drive.google.com/drive/folders/exsi-verilog-resources",
-        };
-      }
-      return c;
-    });
-    setEnrollments(updated);
-    try {
-      localStorage.setItem(key, JSON.stringify(updated));
-    } catch {
-      // ignore
+    const supabase = createClient();
+    if (!supabase) {
+      throw new Error("Registration changes require a configured Supabase project.");
     }
+
+    const { error } = await supabase
+      .from("enrollments")
+      .delete()
+      .eq("id", enrollment.id)
+      .eq("user_id", user.id);
+
+    if (error) {
+      throw new Error(`Could not cancel your registration: ${error.message}`);
+    }
+    setEnrollments((current) => current.filter((item) => item.id !== enrollment.id));
   };
 
   return (
@@ -438,14 +480,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAdmin,
         enrollments,
         hasRealGoogleConfigured,
+        refreshEnrollments,
         signInWithGoogle,
-        signInWithGoogleCredential,
         signInWithEmail,
         signOut,
         registerCourse,
         isRegistered,
         removeRegistration,
-        markCoursePaid,
       }}
     >
       {children}

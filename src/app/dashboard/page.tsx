@@ -40,7 +40,7 @@ export default function StudentDashboardPage() {
     registerCourse,
     isRegistered,
     removeRegistration,
-    markCoursePaid,
+    refreshEnrollments,
   } = useAuth();
 
   // Admin should never be on the student dashboard — redirect them straight to /admin
@@ -90,13 +90,30 @@ export default function StudentDashboardPage() {
   }
 
   // 1. ONLINE PAYMENT VIA RAZORPAY FROM DASHBOARD
-  async function handleRazorpayCheckout(c: (typeof courses)[0]) {
+  async function handleRazorpayCheckout(
+    c: (typeof courses)[0],
+    knownEnrollmentId?: string
+  ) {
     if (!user) return;
     setProcessingSlug(c.slug);
     setPaymentError(null);
 
     try {
+      const enrollment =
+        enrollments.find((item) => item.id === knownEnrollmentId) ||
+        (await registerCourse({
+          slug: c.slug,
+          title: c.title,
+          duration: c.duration,
+          fee: c.fee,
+          batchStart: c.batchStart,
+          studentName: user.name,
+          college: user.college,
+          phone: user.phone,
+          year: user.year,
+        }));
       const result = await initiateRazorpayPayment({
+        enrollmentId: enrollment.id,
         courseTitle: c.title,
         courseSlug: c.slug,
         fee: c.fee,
@@ -108,30 +125,14 @@ export default function StudentDashboardPage() {
       if (!result.success) {
         setPaymentError(
           result.missingConfig
-            ? "Razorpay API keys are not yet added to .env.local. Add NEXT_PUBLIC_RAZORPAY_KEY_ID to enable live payments."
+            ? "Payment setup is incomplete. The server needs Razorpay credentials and the Supabase service role key."
             : result.error || "Payment was cancelled or failed."
         );
         setProcessingSlug(null);
         return;
       }
 
-      // Check if already in enrollments
-      const isAlready = enrollments.some((item) => item.courseSlug === c.slug);
-      if (isAlready) {
-        markCoursePaid(c.slug, result.paymentId || `pay_${Date.now()}`, result.orderId);
-      } else {
-        registerCourse({
-          slug: c.slug,
-          title: c.title,
-          duration: c.duration,
-          fee: c.fee,
-          batchStart: c.batchStart,
-          status: "approved",
-          paymentId: result.paymentId,
-          orderId: result.orderId,
-          paymentMethod: "online_razorpay",
-        });
-      }
+      await refreshEnrollments();
 
       setRegisteredSuccessMsg(`Payment of ${c.fee} verified! Your seat for ${c.title} is now confirmed.`);
       setActiveTab("registered");
@@ -140,6 +141,14 @@ export default function StudentDashboardPage() {
     } catch (err: unknown) {
       setPaymentError(err instanceof Error ? err.message : "Payment processing error.");
       setProcessingSlug(null);
+    }
+  }
+
+  async function handleRemoveRegistration(slug: string) {
+    try {
+      await removeRegistration(slug);
+    } catch (error) {
+      setPaymentError(error instanceof Error ? error.message : "Could not cancel registration.");
     }
   }
 
@@ -288,6 +297,10 @@ export default function StudentDashboardPage() {
                             <span className="inline-flex items-center gap-1.5 py-1 px-3 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                               <CheckCircle2 size={13} /> Approved &bull; Confirmed
                             </span>
+                          ) : item.status === "rejected" ? (
+                            <span className="inline-flex items-center gap-1.5 py-1 px-3 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200">
+                              <AlertCircle size={13} /> Registration Rejected
+                            </span>
                           ) : (
                             <span className="inline-flex items-center gap-1.5 py-1 px-3 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
                               <Clock size={13} /> Registered &bull; Fee Verification Pending
@@ -325,7 +338,11 @@ export default function StudentDashboardPage() {
                         </span>
                         <div className="text-2xl font-bold text-[#0b1f45]">{item.fee}</div>
                         <span className="text-[11px] text-[#5b6e86] block mt-0.5">
-                          {item.paymentMethod === "online_razorpay" ? "Paid Online" : "Collected offline"}
+                          {item.paymentMethod === "online_razorpay"
+                            ? "Paid Online"
+                            : item.paymentMethod === "offline"
+                              ? "Collected offline"
+                              : "Payment pending"}
                         </span>
                       </div>
                     </div>
@@ -340,7 +357,9 @@ export default function StudentDashboardPage() {
                                 <Video size={16} className="text-emerald-600" /> Live Classroom Access
                               </h3>
                               <p className="text-xs sm:text-sm text-emerald-800 leading-relaxed">
-                                Your registration has been approved. Join live lectures via Google Meet and access class materials.
+                                {item.meetingLink || item.materialsUrl
+                                  ? "Your registration has been approved. Use the access details provided here."
+                                  : "Your registration has been approved. Class access details will appear here once they are added."}
                               </p>
                               {item.paymentId && (
                                 <p className="text-[11px] text-emerald-700 mt-1 font-mono">
@@ -373,7 +392,7 @@ export default function StudentDashboardPage() {
                             </div>
                           </div>
                         </div>
-                      ) : (
+                      ) : item.status === "pending" ? (
                         <div className="rounded-2xl bg-[#fffbeb] border border-[#fef3c7] p-5">
                           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                             <div className="flex items-start gap-3">
@@ -395,7 +414,7 @@ export default function StudentDashboardPage() {
                                 if (!courseObj) return null;
                                 return (
                                   <button
-                                    onClick={() => handleRazorpayCheckout(courseObj)}
+                                  onClick={() => handleRazorpayCheckout(courseObj, item.id)}
                                     disabled={processingSlug === item.courseSlug}
                                     className="inline-flex items-center gap-2 py-2.5 px-5 rounded-full font-bold text-xs text-white bg-[#0e6fd0] hover:bg-[#0a58a8] shadow-sm transition-all"
                                   >
@@ -410,7 +429,7 @@ export default function StudentDashboardPage() {
                               })()}
 
                               <button
-                                onClick={() => removeRegistration(item.courseSlug)}
+                                onClick={() => handleRemoveRegistration(item.courseSlug)}
                                 title="Remove this registration"
                                 className="inline-flex items-center gap-1.5 py-2 px-3 rounded-full border border-red-200 text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors"
                               >
@@ -419,6 +438,10 @@ export default function StudentDashboardPage() {
                               </button>
                             </div>
                           </div>
+                        </div>
+                      ) : (
+                        <div className="rounded-2xl bg-red-50 border border-red-200 p-5 text-sm text-red-800">
+                          Your registration was rejected. Please contact EXSi Technologies if you need help.
                         </div>
                       )}
                     </div>

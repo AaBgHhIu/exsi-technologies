@@ -25,6 +25,7 @@ export function loadRazorpayScript(): Promise<boolean> {
 }
 
 export interface RazorpayPaymentParams {
+  enrollmentId: string;
   courseTitle: string;
   courseSlug: string;
   fee: string;
@@ -64,7 +65,7 @@ export async function initiateRazorpayPayment(
     const res = await fetch("/api/razorpay/order", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(params),
+      body: JSON.stringify({ enrollmentId: params.enrollmentId }),
     });
 
     orderData = await res.json();
@@ -119,7 +120,7 @@ export async function initiateRazorpayPayment(
           const verifyRes = await fetch("/api/razorpay/verify", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(response),
+            body: JSON.stringify({ ...response, enrollmentId: params.enrollmentId }),
           });
 
           const verifyData = await verifyRes.json();

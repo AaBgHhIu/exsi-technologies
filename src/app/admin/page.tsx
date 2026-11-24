@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
-  Users,
   CheckCircle2,
   XCircle,
   Clock,
@@ -13,10 +12,7 @@ import {
   ShieldAlert,
   ExternalLink,
   LogOut,
-  User,
   Trash2,
-  PlusCircle,
-  RefreshCw,
   Star,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
@@ -26,7 +22,6 @@ import {
   getAllRegistrations,
   updateRegistrationStatus,
   deleteRegistration,
-  saveNewRegistration,
   AdminRegistrationRecord,
 } from "@/lib/registrations";
 
@@ -38,11 +33,22 @@ export default function AdminPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [actionNotice, setActionNotice] = useState<string | null>(null);
 
-  // Load real registrations from platform storage
+  // Load registrations shared through Supabase.
   useEffect(() => {
     if (!isAdmin) return;
-    setRegistrations(getAllRegistrations());
     let active = true;
+    getAllRegistrations()
+      .then((items) => {
+        if (active) setRegistrations(items);
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setActionNotice(
+            error instanceof Error ? error.message : "Could not load registrations."
+          );
+        }
+      });
+
     getFeedback().then((items) => {
       if (active) setFeedback(items);
     });
@@ -52,77 +58,38 @@ export default function AdminPage() {
     };
   }, [isAdmin]);
 
-  function handleStatusChange(id: string, newStatus: "approved" | "rejected") {
-    const updated = updateRegistrationStatus(id, newStatus);
-    setRegistrations(updated);
-
-    const student = updated.find((r) => r.id === id);
-    const msg =
-      newStatus === "approved"
-        ? `Approved ${student?.studentName} for ${student?.courseTitle}! Meeting and classroom resources unlocked.`
-        : `Marked ${student?.studentName}'s registration as Rejected.`;
-
-    setActionNotice(msg);
-    setTimeout(() => setActionNotice(null), 5000);
-  }
-
-  function handleDelete(id: string) {
-    if (confirm("Are you sure you want to delete this student registration record?")) {
-      const updated = deleteRegistration(id);
+  async function handleStatusChange(id: string, newStatus: "approved" | "rejected") {
+    try {
+      const updated = await updateRegistrationStatus(id, newStatus);
       setRegistrations(updated);
-      setActionNotice("Registration record removed.");
-      setTimeout(() => setActionNotice(null), 4000);
+
+      const student = updated.find((r) => r.id === id);
+      const msg =
+        newStatus === "approved"
+          ? `Approved ${student?.studentName} for ${student?.courseTitle}.`
+          : `Marked ${student?.studentName}'s registration as rejected.`;
+
+      setActionNotice(msg);
+      setTimeout(() => setActionNotice(null), 5000);
+    } catch (error) {
+      setActionNotice(
+        error instanceof Error ? error.message : "Could not update registration status."
+      );
     }
   }
 
-  function handleAddTestStudent() {
-    const testNames = ["Ananya Sen", "Karthik Menon", "Siddharth Verma", "Divya Pillai"];
-    const colleges = ["IIT Madras", "NIT Calicut", "Model Engg College", "CET Trivandrum"];
-    const courses = [
-      {
-        title: "Verilog HDL, RTL Design & Digital Projects",
-        slug: "verilog-hdl-rtl-design",
-        fee: "On enquiry",
-      },
-    ];
-
-    const randomName = testNames[Math.floor(Math.random() * testNames.length)];
-    const randomCollege = colleges[Math.floor(Math.random() * colleges.length)];
-    const randomCourse = courses[Math.floor(Math.random() * courses.length)];
-    const randomId = `reg-${Date.now()}`;
-
-    const newRecord: AdminRegistrationRecord = {
-      id: randomId,
-      studentName: randomName,
-      email: `${randomName.toLowerCase().replace(" ", ".")}@gmail.com`,
-      phone: "+91 9" + Math.floor(100000000 + Math.random() * 900000000),
-      college: randomCollege,
-      year: "3rd Year",
-      courseTitle: randomCourse.title,
-      courseSlug: randomCourse.slug,
-      fee: randomCourse.fee,
-      status: "pending",
-      date: new Date().toLocaleDateString("en-IN", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      }),
-      meetingLink: "https://meet.google.com/exsi-vlsi-live",
-      materialsUrl: "https://drive.google.com/drive/folders/exsi-verilog-resources",
-    };
-
-    saveNewRegistration(newRecord);
-    setRegistrations(getAllRegistrations());
-    setActionNotice(`Added test registration for ${randomName}!`);
-    setTimeout(() => setActionNotice(null), 4000);
-  }
-
-  function handleClearAll() {
-    if (confirm("Are you sure you want to clear all registrations and start fresh?")) {
-      localStorage.setItem("exsi_all_admin_registrations", JSON.stringify([]));
-      setRegistrations([]);
-      setActionNotice("All registration records cleared.");
-      setTimeout(() => setActionNotice(null), 4000);
+  async function handleDelete(id: string) {
+    if (confirm("Are you sure you want to delete this student registration record?")) {
+      try {
+        const updated = await deleteRegistration(id);
+        setRegistrations(updated);
+        setActionNotice("Registration record removed.");
+        setTimeout(() => setActionNotice(null), 4000);
+      } catch (error) {
+        setActionNotice(
+          error instanceof Error ? error.message : "Could not delete registration."
+        );
+      }
     }
   }
 
@@ -383,22 +350,6 @@ export default function AdminPage() {
                 />
               </div>
 
-              <button
-                onClick={handleAddTestStudent}
-                title="Add a sample student registration to test approvals"
-                className="inline-flex items-center gap-1.5 py-2 px-3 rounded-xl border border-[#dde8f5] text-xs font-semibold text-[#0a58a8] bg-[#f5f9ff] hover:bg-[#e8f4fd] transition-colors shrink-0"
-              >
-                <PlusCircle size={13} />
-                <span className="hidden md:inline">+ Test Student</span>
-              </button>
-
-              <button
-                onClick={handleClearAll}
-                title="Clear all registrations"
-                className="p-2 rounded-xl border border-[#dde8f5] text-xs text-[#5b6e86] hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition-colors shrink-0"
-              >
-                <Trash2 size={14} />
-              </button>
             </div>
           </div>
 
@@ -455,7 +406,9 @@ export default function AdminPage() {
                             )}
                           </div>
                         ) : (
-                          <span className="text-[10px] text-[#5b6e86] block mt-0.5">Offline</span>
+                          <span className="text-[10px] text-[#5b6e86] block mt-0.5">
+                            {item.paymentMethod === "offline" ? "Offline" : "Awaiting payment"}
+                          </span>
                         )}
                       </td>
 
@@ -483,7 +436,7 @@ export default function AdminPage() {
                             <button
                               onClick={() => handleStatusChange(item.id, "approved")}
                               className="px-3.5 py-1.5 rounded-full text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors shadow-sm cursor-pointer"
-                              title="Approve registration and unlock class links"
+                              title="Approve registration"
                             >
                               ✓ Approve
                             </button>

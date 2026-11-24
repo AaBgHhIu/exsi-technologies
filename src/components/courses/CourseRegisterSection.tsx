@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   CheckCircle2,
   AlertCircle,
@@ -35,8 +34,7 @@ export default function CourseRegisterSection({
   duration,
   batchStart,
 }: CourseRegisterSectionProps) {
-  const router = useRouter();
-  const { user, signInWithGoogle, registerCourse, isRegistered } = useAuth();
+  const { user, enrollments, registerCourse, isRegistered, refreshEnrollments } = useAuth();
 
   const [formData, setFormData] = useState({
     fullName: "",
@@ -64,6 +62,7 @@ export default function CourseRegisterSection({
   }, [user]);
 
   const alreadyRegistered = isRegistered(courseSlug);
+  const existingEnrollment = enrollments.find((item) => item.courseSlug === courseSlug);
 
   function validateForm(): boolean {
     if (
@@ -90,13 +89,36 @@ export default function CourseRegisterSection({
   // ONLINE PAYMENT VIA RAZORPAY & AUTO-APPROVAL
   async function handlePaymentAndRegistration() {
     if (!validateForm()) return;
+    if (!user) {
+      setStatus("error");
+      setErrorMessage("Sign in with Google before completing your registration.");
+      return;
+    }
+    if (formData.email.trim().toLowerCase() !== user.email.toLowerCase()) {
+      setStatus("error");
+      setErrorMessage("Use the email address from your signed-in Google account.");
+      return;
+    }
 
     setStatus("submitting");
     setErrorMessage("");
     setMissingRazorpayConfig(false);
 
     try {
+      const enrollment = await registerCourse({
+        slug: courseSlug,
+        title: courseTitle,
+        duration,
+        fee,
+        batchStart,
+        studentName: formData.fullName.trim(),
+        college: formData.college.trim(),
+        phone: formData.phone.trim(),
+        year: formData.year,
+      });
+
       const result = await initiateRazorpayPayment({
+        enrollmentId: enrollment.id,
         courseTitle,
         courseSlug,
         fee,
@@ -110,7 +132,7 @@ export default function CourseRegisterSection({
         if (result.missingConfig) {
           setMissingRazorpayConfig(true);
           setErrorMessage(
-            "Razorpay API Keys are not yet configured in .env.local. Add NEXT_PUBLIC_RAZORPAY_KEY_ID to activate online checkout."
+            "Payment setup is incomplete. The server needs Razorpay credentials and the Supabase service role key."
           );
         } else {
           setErrorMessage(result.error || "Payment was not completed.");
@@ -118,26 +140,10 @@ export default function CourseRegisterSection({
         return;
       }
 
-      // Payment Verified! Complete registration with instant approved status
-      const paymentId = result.paymentId || `pay_${Date.now()}`;
-      registerCourse({
-        slug: courseSlug,
-        title: courseTitle,
-        duration,
-        fee,
-        batchStart,
-        college: formData.college.trim(),
-        phone: formData.phone.trim(),
-        year: formData.year,
-        status: "approved",
-        paymentId,
-        orderId: result.orderId,
-        paymentMethod: "online_razorpay",
-      });
-
       setPaymentSuccessData({
-        paymentId,
+        paymentId: result.paymentId,
       });
+      await refreshEnrollments();
       setStatus("success");
     } catch (err: unknown) {
       setStatus("error");
@@ -163,16 +169,22 @@ export default function CourseRegisterSection({
           </p>
         </div>
 
-        {alreadyRegistered && status !== "success" ? (
+        {alreadyRegistered && status !== "success" && status !== "submitting" ? (
           <div className="bg-white rounded-[24px] border border-[#bbf7d0] p-8 text-center shadow-sm">
             <div className="w-14 h-14 rounded-full bg-emerald-50 text-emerald-600 grid place-items-center mx-auto mb-3">
               <CheckCircle2 size={32} />
             </div>
             <h3 className="text-xl font-bold text-[#0b1f45] mb-1">
-              You are enrolled in this course!
+              {existingEnrollment?.status === "approved"
+                ? "You are enrolled in this course!"
+                : existingEnrollment?.status === "rejected"
+                  ? "This registration was not approved."
+                  : "Your registration is saved."}
             </h3>
             <p className="text-sm text-[#5b6e86] max-w-md mx-auto mb-6">
-              Your admission is confirmed and linked to your account (<strong>{user?.email}</strong>).
+              {existingEnrollment?.status === "pending"
+                ? "Complete payment from your student dashboard to confirm your seat."
+                : `Your registration is linked to your account (${user?.email}).`}
             </p>
             <Link href="/dashboard" className="btn btn-primary !py-2.5 !px-6 text-sm">
               View in My Courses Dashboard &rarr;
@@ -194,7 +206,7 @@ export default function CourseRegisterSection({
 
             <p className="text-[#5b6e86] text-sm max-w-md mx-auto my-3 leading-relaxed">
               Thank you, <strong>{formData.fullName || user?.name}</strong>. Your enrollment for{" "}
-              <strong>{courseTitle}</strong> is active. Live Google Meet sessions and syllabus resources are unlocked in your dashboard.
+              <strong>{courseTitle}</strong> is active and recorded in your student dashboard.
             </p>
 
             <div className="bg-[#f5f9ff] border border-[#dde8f5] rounded-xl p-4 text-xs text-[#0b1f45] text-left max-w-md mx-auto my-4 space-y-1.5">
@@ -312,6 +324,7 @@ export default function CourseRegisterSection({
                       required
                       placeholder="student@gmail.com"
                       value={formData.email}
+                      readOnly={Boolean(user)}
                       onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                       className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#dde8f5] text-sm text-[#0b1f45] placeholder:text-[#a0b0c0] bg-white focus:outline-none focus:border-[#0e6fd0]"
                     />
@@ -382,14 +395,16 @@ export default function CourseRegisterSection({
               <div className="pt-3 border-t border-[#dde8f5] space-y-3">
                 <button
                   type="submit"
-                  disabled={status === "submitting"}
+                  disabled={status === "submitting" || !user}
                   className="w-full py-4 px-6 rounded-full font-bold text-sm sm:text-base text-white bg-[#0e6fd0] hover:bg-[#0a58a8] shadow-[0_8px_24px_rgba(14,111,208,0.3)] transition-all flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-60"
                 >
                   <CreditCard size={18} />
                   <span>
                     {status === "submitting"
                       ? "Connecting to Razorpay..."
-                      : `Pay ${fee} & Enroll Now`}
+                      : user
+                        ? `Pay ${fee} & Enroll Now`
+                        : "Sign in with Google to enroll"}
                   </span>
                   <Zap size={15} className="text-amber-300" />
                 </button>

@@ -1,38 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
-import Script from "next/script";
 import { useAuth } from "@/context/AuthContext";
-
-declare global {
-  interface Window {
-    google?: {
-      accounts: {
-        id: {
-          initialize: (config: {
-            client_id: string;
-            callback: (response: { credential: string }) => void;
-            auto_select?: boolean;
-            cancel_on_tap_outside?: boolean;
-          }) => void;
-          renderButton: (
-            parent: HTMLElement,
-            options: {
-              theme?: "outline" | "filled_blue" | "filled_black";
-              size?: "large" | "medium" | "small";
-              type?: "standard" | "icon";
-              shape?: "rectangular" | "pill" | "circle" | "square";
-              text?: "signin_with" | "signup_with" | "continue_with" | "signin";
-              width?: number;
-              logo_alignment?: "left" | "center";
-            }
-          ) => void;
-          prompt: () => void;
-        };
-      };
-    };
-  }
-}
 
 export function GoogleIcon({ className = "w-5 h-5" }: { className?: string }) {
   return (
@@ -74,56 +42,7 @@ export function GoogleButton({
   className = "",
   variant = "outline",
 }: GoogleButtonProps) {
-  const { signInWithGoogleCredential, signInWithGoogle, hasRealGoogleConfigured } = useAuth();
-  const buttonRef = useRef<HTMLDivElement>(null);
-  const [gisLoaded, setGisLoaded] = useState(false);
-  const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-
-  // Initialize official Google Identity Services if Client ID exists
-  useEffect(() => {
-    if (typeof window === "undefined" || !clientId || clientId.includes("your-google-client-id")) {
-      return;
-    }
-
-    function initGis() {
-      if (window.google?.accounts?.id && buttonRef.current) {
-        window.google.accounts.id.initialize({
-          client_id: clientId as string,
-          callback: (response) => {
-            if (response.credential) {
-              signInWithGoogleCredential(response.credential);
-            }
-          },
-        });
-
-        // Render official Google button inside the container
-        buttonRef.current.innerHTML = "";
-        window.google.accounts.id.renderButton(buttonRef.current, {
-          theme: "outline",
-          size: "large",
-          type: "standard",
-          shape: "pill",
-          text: "continue_with",
-          width: 320,
-          logo_alignment: "left",
-        });
-
-        setGisLoaded(true);
-      }
-    }
-
-    if (window.google?.accounts?.id) {
-      initGis();
-    } else {
-      const interval = setInterval(() => {
-        if (window.google?.accounts?.id) {
-          clearInterval(interval);
-          initGis();
-        }
-      }, 200);
-      return () => clearInterval(interval);
-    }
-  }, [clientId, signInWithGoogleCredential]);
+  const { signInWithGoogle } = useAuth();
 
   const baseStyles =
     "w-full inline-flex items-center justify-center gap-3 py-3 px-5 rounded-full font-semibold text-sm transition-all shadow-sm cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed";
@@ -134,35 +53,18 @@ export function GoogleButton({
       : "bg-white text-[#0b1f45] border border-[#cfdef2] hover:bg-[#f5f9ff] hover:border-[#b5d6f3] hover:shadow-md";
 
   return (
-    <>
-      <Script
-        src="https://accounts.google.com/gsi/client"
-        strategy="afterInteractive"
-        onLoad={() => {
-          setGisLoaded(true);
-        }}
-      />
-
-      {/* If official GIS rendered button is available, show it */}
-      {clientId && !clientId.includes("your-google-client-id") ? (
-        <div className="flex flex-col items-center justify-center w-full">
-          <div ref={buttonRef} className="w-full flex justify-center min-h-[44px]" />
-        </div>
+    <button
+      type="button"
+      onClick={onClick || (() => signInWithGoogle())}
+      disabled={disabled || loading}
+      className={`${baseStyles} ${variantStyles} ${className}`}
+    >
+      {loading ? (
+        <span className="w-5 h-5 border-2 border-[#0e6fd0] border-t-transparent rounded-full animate-spin" />
       ) : (
-        <button
-          type="button"
-          onClick={onClick || (() => signInWithGoogle())}
-          disabled={disabled || loading}
-          className={`${baseStyles} ${variantStyles} ${className}`}
-        >
-          {loading ? (
-            <span className="w-5 h-5 border-2 border-[#0e6fd0] border-t-transparent rounded-full animate-spin" />
-          ) : (
-            <GoogleIcon className="w-5 h-5 shrink-0" />
-          )}
-          <span>{loading ? "Connecting Google..." : label}</span>
-        </button>
+        <GoogleIcon className="w-5 h-5 shrink-0" />
       )}
-    </>
+      <span>{loading ? "Connecting Google..." : label}</span>
+    </button>
   );
 }

@@ -31,9 +31,22 @@ declare module "razorpay" {
     fetch: (orderId: string) => Promise<RazorpayOrder>;
   }
 
+  interface RazorpayPayment {
+    id: string;
+    order_id: string | null;
+    amount: number;
+    currency: string;
+    status: "created" | "authorized" | "captured" | "refunded" | "failed";
+  }
+
+  interface RazorpayPayments {
+    fetch: (paymentId: string) => Promise<RazorpayPayment>;
+  }
+
   class Razorpay {
     constructor(config: RazorpayConfig);
     orders: RazorpayOrders;
+    payments: RazorpayPayments;
   }
 
   export = Razorpay;

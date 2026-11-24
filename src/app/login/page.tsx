@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
-import { Mail, ArrowRight, CheckCircle2, KeyRound, HelpCircle } from "lucide-react";
+import { CheckCircle2, KeyRound } from "lucide-react";
 import { useAuth, checkIsAdmin } from "@/context/AuthContext";
 import { GoogleButton } from "@/components/auth/GoogleButton";
 
@@ -74,34 +74,29 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* Real Google Status Banner */}
+        {/* Supabase Google sign-in setup */}
         {!hasRealGoogleConfigured && (
           <div className="mb-6 p-4 rounded-xl bg-[#fffbeb] border border-[#fef3c7] text-xs">
             <div className="flex items-start gap-2 text-amber-900 font-semibold mb-1">
               <KeyRound size={15} className="shrink-0 text-amber-600 mt-0.5" />
-              <span>How to test with REAL Google OAuth:</span>
+              <span>Google sign-in setup required:</span>
             </div>
             <p className="text-amber-800 leading-relaxed">
-              Google requires a free <strong>Google Client ID</strong> to open their official popup for your local URL.
+              Connect Supabase and enable Google under Authentication &rarr; Sign In / Providers.
             </p>
             <button
               type="button"
               onClick={() => setShowConfigGuide(!showConfigGuide)}
               className="mt-2 text-[#0e6fd0] font-semibold underline hover:text-[#0a58a8]"
             >
-              {showConfigGuide ? "Hide 2-minute setup instructions" : "Click here for 2-minute setup instructions &rarr;"}
+              {showConfigGuide ? "Hide setup instructions" : "Click here for setup instructions &rarr;"}
             </button>
 
             {showConfigGuide && (
               <div className="mt-3 pt-3 border-t border-[#fde68a] space-y-2 text-[11px] text-amber-900">
-                <p>1. Open <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="underline font-bold text-[#0e6fd0]">Google Cloud Console &rarr; Credentials</a>.</p>
-                <p>2. Click <strong>Create Credentials &rarr; OAuth client ID</strong>.</p>
-                <p>3. Application type: <strong>Web application</strong>.</p>
-                <p>4. Authorized JavaScript origins: <code>http://localhost:3000</code>.</p>
-                <p>5. Copy your Client ID and paste into <code>.env.local</code>:</p>
-                <pre className="p-2 bg-white rounded border border-[#fde68a] overflow-x-auto text-[10px]">
-                  NEXT_PUBLIC_GOOGLE_CLIENT_ID=your-id.apps.googleusercontent.com
-                </pre>
+                <p>1. Set <code>NEXT_PUBLIC_SUPABASE_URL</code> and <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code>.</p>
+                <p>2. Add your Google OAuth client ID and secret in Supabase&apos;s Google provider settings.</p>
+                <p>3. Allow your site URL and <code>/auth/callback</code> in Supabase Auth URL settings.</p>
               </div>
             )}
           </div>
