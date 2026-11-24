@@ -122,24 +122,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Check Supabase session if configured
     const supabase = createClient();
     if (supabase) {
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        if (session?.user) {
-          const su: StudentUser = {
-            id: session.user.id,
-            name:
-              session.user.user_metadata?.full_name ||
-              session.user.user_metadata?.name ||
-              session.user.email?.split("@")[0] ||
-              "Student",
-            email: session.user.email || "",
-            image: session.user.user_metadata?.avatar_url,
-            provider: (session.user.app_metadata?.provider as "google" | "email") || "google",
-          };
-          setUser(su);
-          localStorage.setItem("exsi_student_user", JSON.stringify(su));
-          loadEnrollmentsForUser(su.email);
-        }
-      });
+      supabase.auth
+        .getSession()
+        .then(({ data: { session }, error }) => {
+          if (error) {
+            console.error("Failed to load Supabase session:", error.message);
+          }
+
+          if (session?.user) {
+            const su: StudentUser = {
+              id: session.user.id,
+              name:
+                session.user.user_metadata?.full_name ||
+                session.user.user_metadata?.name ||
+                session.user.email?.split("@")[0] ||
+                "Student",
+              email: session.user.email || "",
+              image: session.user.user_metadata?.avatar_url,
+              provider: (session.user.app_metadata?.provider as "google" | "email") || "google",
+            };
+            setUser(su);
+            localStorage.setItem("exsi_student_user", JSON.stringify(su));
+            loadEnrollmentsForUser(su.email);
+          } else {
+            setLoading(false);
+          }
+        })
+        .catch((error: unknown) => {
+          console.error("Failed to load Supabase session:", error);
+          setLoading(false);
+        });
 
       const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
         if (session?.user) {
@@ -239,8 +251,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (error) throw error;
         return;
       } catch (err) {
-        console.warn("Supabase Google OAuth fallback:", err);
+        setLoading(false);
+        throw err;
       }
+    }
+
+    if (process.env.NODE_ENV === "production") {
+      setLoading(false);
+      throw new Error("Google sign-in is not configured. Please contact the EXSI team.");
     }
 
     // 2. No real Google configured — require explicit email to be passed

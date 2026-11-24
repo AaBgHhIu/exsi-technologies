@@ -24,6 +24,7 @@ export default function LoginPage() {
   const [realGmail, setRealGmail] = useState("");
   const [showConfigGuide, setShowConfigGuide] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [authError, setAuthError] = useState("");
 
   // If already logged in, redirect to admin if admin, else dashboard
   if (user) {
@@ -38,6 +39,7 @@ export default function LoginPage() {
   async function handleQuickGoogleLogin() {
     if (!realGmail || !realGmail.includes("@")) return; // must have email
     setIsSubmitting(true);
+    setAuthError("");
     try {
       await signInWithGoogle({ email: realGmail, name: realGmail.split("@")[0].replace(".", " ") });
       if (checkIsAdmin(realGmail) && !searchParams.get("redirect")) {
@@ -47,6 +49,9 @@ export default function LoginPage() {
       }
     } catch (err) {
       console.error(err);
+      setAuthError(
+        err instanceof Error ? err.message : "Could not start Google sign-in. Please try again."
+      );
       setIsSubmitting(false);
     }
   }
@@ -134,6 +139,11 @@ export default function LoginPage() {
             className="text-[0.95rem] py-3.5"
             disabled={!realGmail.includes("@")}
           />
+          {authError && (
+            <p role="alert" className="text-center text-sm text-red-600">
+              {authError}
+            </p>
+          )}
         </div>
 
         {/* Features preview */}
