@@ -113,36 +113,7 @@ CREATE POLICY "courses_admin_all" ON public.courses
   WITH CHECK (public.is_admin());
 
 
--- 4. COURSE_PRIVATE TABLE (Holds meeting links & class materials; segregated for security)
-CREATE TABLE IF NOT EXISTS public.course_private (
-  course_id UUID PRIMARY KEY REFERENCES public.courses(id) ON DELETE CASCADE,
-  meeting_link TEXT NOT NULL DEFAULT '',
-  materials_url TEXT NOT NULL DEFAULT ''
-);
-
-ALTER TABLE public.course_private ENABLE ROW LEVEL SECURITY;
-
--- COURSE_PRIVATE RLS:
--- SELECT allowed ONLY if caller is admin OR student has an APPROVED enrollment in this course!
-CREATE POLICY "course_private_select_policy" ON public.course_private
-  FOR SELECT
-  USING (
-    public.is_admin()
-    OR EXISTS (
-      SELECT 1 FROM public.enrollments e
-      WHERE e.course_id = course_private.course_id
-        AND e.user_id = auth.uid()
-        AND e.status = 'approved'
-    )
-  );
-
-CREATE POLICY "course_private_admin_all" ON public.course_private
-  FOR ALL
-  USING (public.is_admin())
-  WITH CHECK (public.is_admin());
-
-
--- 5. ENROLLMENTS TABLE
+-- 4. ENROLLMENTS TABLE
 CREATE TABLE IF NOT EXISTS public.enrollments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
@@ -179,6 +150,34 @@ CREATE POLICY "enrollments_delete_policy" ON public.enrollments
   USING (public.is_admin());
 
 
+-- 5. COURSE_PRIVATE TABLE (Holds meeting links & class materials; segregated for security)
+CREATE TABLE IF NOT EXISTS public.course_private (
+  course_id UUID PRIMARY KEY REFERENCES public.courses(id) ON DELETE CASCADE,
+  meeting_link TEXT NOT NULL DEFAULT '',
+  materials_url TEXT NOT NULL DEFAULT ''
+);
+
+ALTER TABLE public.course_private ENABLE ROW LEVEL SECURITY;
+
+-- SELECT allowed ONLY if caller is admin OR student has an APPROVED enrollment in this course.
+CREATE POLICY "course_private_select_policy" ON public.course_private
+  FOR SELECT
+  USING (
+    public.is_admin()
+    OR EXISTS (
+      SELECT 1 FROM public.enrollments e
+      WHERE e.course_id = course_private.course_id
+        AND e.user_id = auth.uid()
+        AND e.status = 'approved'
+    )
+  );
+
+CREATE POLICY "course_private_admin_all" ON public.course_private
+  FOR ALL
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
+
+
 -- 6. QUOTE_REQUESTS TABLE (For Project inquiries)
 CREATE TABLE IF NOT EXISTS public.quote_requests (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -204,65 +203,3 @@ CREATE POLICY "quote_requests_admin_all" ON public.quote_requests
   FOR ALL
   USING (public.is_admin())
   WITH CHECK (public.is_admin());
-
-
--- =============================================================================
--- SEED DATA: Insert initial courses & their private meeting links
--- =============================================================================
-
-INSERT INTO public.courses (id, slug, title, short_desc, description, fee, duration, mode, is_active)
-VALUES 
-  (
-    '11111111-1111-1111-1111-111111111111',
-    'verilog-hdl-rtl-design',
-    'Verilog HDL & RTL Design',
-    'Learn digital design concepts, synthesizable Verilog, FSM design, simulation and verification fundamentals.',
-    'Comprehensive 6-week hands-on Verilog RTL engineering course designed for college students in ECE, EE, and CSE.',
-    4999,
-    '6 Weeks',
-    'Live Online',
-    true
-  ),
-  (
-    '22222222-2222-2222-2222-222222222222',
-    'asic-semiconductor-fundamentals',
-    'ASIC & Semiconductor Fundamentals',
-    'Understand the digital IC design flow, RTL-to-GDS concepts, timing, constraints and implementation stages.',
-    '4-week instructor-led foundation course exploring semiconductor physics, CMOS logic, STA, and physical design signoff.',
-    3999,
-    '4 Weeks',
-    'Instructor-led Live',
-    true
-  ),
-  (
-    '33333333-3333-3333-3333-333333333333',
-    'digital-design-projects',
-    'Digital Design & FPGA Projects',
-    'Strengthen practical design skills through guided RTL modules, communication protocols, and FPGA synthesis.',
-    '8-week lab implementing UART, SPI, FIFO, and pipelined ALU blocks with testbenches and portfolio documentation.',
-    6999,
-    '8 Weeks',
-    'Hands-on Project Lab',
-    true
-  )
-ON CONFLICT (slug) DO NOTHING;
-
--- Insert private links for these courses
-INSERT INTO public.course_private (course_id, meeting_link, materials_url)
-VALUES
-  (
-    '11111111-1111-1111-1111-111111111111',
-    'https://meet.google.com/exsi-vls-live',
-    'https://drive.google.com/drive/folders/exsi-verilog-resources'
-  ),
-  (
-    '22222222-2222-2222-2222-222222222222',
-    'https://meet.google.com/exsi-asic-live',
-    'https://drive.google.com/drive/folders/exsi-asic-resources'
-  ),
-  (
-    '33333333-3333-3333-3333-333333333333',
-    'https://meet.google.com/exsi-proj-live',
-    'https://drive.google.com/drive/folders/exsi-fpga-resources'
-  )
-ON CONFLICT (course_id) DO NOTHING;
