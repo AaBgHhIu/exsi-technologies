@@ -16,12 +16,10 @@ export default function LoginPage() {
   const {
     user,
     signInWithGoogle,
-    signInWithEmail,
     hasRealGoogleConfigured,
     loading: authLoading,
   } = useAuth();
 
-  const [realGmail, setRealGmail] = useState("");
   const [showConfigGuide, setShowConfigGuide] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [authError, setAuthError] = useState("");
@@ -36,17 +34,11 @@ export default function LoginPage() {
     return null;
   }
 
-  async function handleQuickGoogleLogin() {
-    if (!realGmail || !realGmail.includes("@")) return; // must have email
+  async function handleGoogleLogin() {
     setIsSubmitting(true);
     setAuthError("");
     try {
-      await signInWithGoogle({ email: realGmail, name: realGmail.split("@")[0].replace(".", " ") });
-      if (checkIsAdmin(realGmail) && !searchParams.get("redirect")) {
-        router.push("/admin");
-      } else {
-        router.push(redirectTarget);
-      }
+      await signInWithGoogle();
     } catch (err) {
       console.error(err);
       setAuthError(
@@ -117,27 +109,11 @@ export default function LoginPage() {
 
         {/* Google Sign-In Action */}
         <div className="space-y-4 mb-6">
-          {/* Email input is always visible — required for sign in */}
-          <div>
-            <label className="block text-sm font-semibold text-[#0b1f45] mb-1.5">
-              Your Gmail address
-            </label>
-            <input
-              type="email"
-              placeholder="yourname@gmail.com"
-              value={realGmail}
-              onChange={(e) => setRealGmail(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && realGmail.includes("@")) handleQuickGoogleLogin(); }}
-              className="w-full px-4 py-3 text-sm border border-[#cfdef2] rounded-xl bg-white focus:outline-none focus:border-[#0e6fd0] focus:ring-2 focus:ring-[#0e6fd0]/10"
-            />
-          </div>
-
           <GoogleButton
-            onClick={handleQuickGoogleLogin}
+            onClick={handleGoogleLogin}
             loading={isSubmitting || authLoading}
             label="Continue with Google"
             className="text-[0.95rem] py-3.5"
-            disabled={!realGmail.includes("@")}
           />
           {authError && (
             <p role="alert" className="text-center text-sm text-red-600">
