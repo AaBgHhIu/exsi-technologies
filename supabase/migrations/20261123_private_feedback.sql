@@ -9,6 +9,9 @@ CREATE TABLE IF NOT EXISTS public.student_feedback (
 
 ALTER TABLE public.student_feedback ENABLE ROW LEVEL SECURITY;
 
+GRANT INSERT ON TABLE public.student_feedback TO anon, authenticated;
+GRANT SELECT, DELETE ON TABLE public.student_feedback TO authenticated;
+
 DROP POLICY IF EXISTS "student_feedback_public_insert" ON public.student_feedback;
 CREATE POLICY "student_feedback_public_insert"
   ON public.student_feedback FOR INSERT
