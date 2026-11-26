@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { siteConfig } from "@/config/site";
 import { sendEmail } from "@/lib/email";
@@ -73,13 +74,27 @@ export async function POST(request: Request) {
     .map(([label, value]) => `<p><strong>${label}:</strong> ${escapeHtml(value)}</p>`)
     .join("");
   const safeMessage = escapeHtml(message).replace(/\r?\n/g, "<br>");
+  const reference = randomUUID().slice(0, 8).toUpperCase();
+  const logoUrl = "https://www.exsitechnologies.com/images/logo.png";
+  const subjectInterest = interest.replace(/\s+/g, " ").slice(0, 120);
 
   try {
     const result = await sendEmail({
       to: process.env.ADMIN_NOTIFICATION_EMAIL!.trim(),
       replyTo: email,
-      subject: `EXSI website enquiry: ${interest}`,
-      html: `<h2>New website enquiry</h2>${details}<p><strong>Message:</strong></p><p>${safeMessage}</p>`,
+      subject: `EXSI website enquiry [${reference}]: ${subjectInterest}`,
+      html: `<div style="max-width:640px;margin:0 auto;font-family:Arial,Helvetica,sans-serif;color:#14243a;line-height:1.6">
+        <div style="padding:20px 0;border-bottom:1px solid #dce5ef">
+          <img src="${logoUrl}" alt="EXSi Technologies" width="180" style="display:block;width:180px;height:auto" />
+        </div>
+        <div style="padding:20px 0">
+          <h2 style="margin:0 0 8px;color:#0b1f45">New website enquiry</h2>
+          <p style="margin:0 0 18px;color:#5b6e86;font-size:13px">Reference: ${reference}</p>
+          ${details}
+          <p><strong>Message:</strong></p>
+          <p>${safeMessage}</p>
+        </div>
+      </div>`,
     });
 
     if (!result.success) {
