@@ -409,6 +409,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (existing) {
+      if (existing.status === "rejected") {
+        const { data: enrollmentId, error: reapplyError } = await supabase.rpc(
+          "reapply_rejected_enrollment",
+          {
+            p_enrollment_id: existing.id,
+            p_student_name: course.studentName || user.name,
+            p_phone: course.phone || user.phone || null,
+            p_college: course.college || user.college || null,
+            p_year: course.year || user.year || null,
+          }
+        );
+
+        if (reapplyError || !enrollmentId) {
+          throw new Error(
+            `Could not resubmit your registration: ${reapplyError?.message || "No enrollment returned."}`
+          );
+        }
+
+        const { data, error } = await supabase
+          .from("enrollments")
+          .select(selection)
+          .eq("id", enrollmentId)
+          .single();
+
+        if (error || !data) {
+          throw new Error(
+            `Your application was resubmitted, but could not be loaded: ${error?.message || "No record returned."}`
+          );
+        }
+
+        const reappliedEnrollment = mapEnrollment(data as EnrollmentDbRow);
+        setEnrollments((current) => [
+          reappliedEnrollment,
+          ...current.filter((item) => item.id !== reappliedEnrollment.id),
+        ]);
+        return reappliedEnrollment;
+      }
+
       const existingEnrollment = mapEnrollment(existing as EnrollmentDbRow);
       setEnrollments((current) => [
         existingEnrollment,
@@ -445,7 +483,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const isRegistered = (slug: string): boolean => {
-    return enrollments.some((c) => c.courseSlug === slug);
+    return enrollments.some((c) => c.courseSlug === slug && c.status !== "rejected");
   };
 
   const removeRegistration = async (slug: string) => {

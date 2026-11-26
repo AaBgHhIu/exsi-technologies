@@ -50,6 +50,9 @@ export default function CourseRegisterSection({
   const [errorMessage, setErrorMessage] = useState("");
   const [missingRazorpayConfig, setMissingRazorpayConfig] = useState(false);
 
+  const alreadyRegistered = isRegistered(courseSlug);
+  const existingEnrollment = enrollments.find((item) => item.courseSlug === courseSlug);
+
   // Auto-populate user's Google info if logged in
   useEffect(() => {
     if (user) {
@@ -61,8 +64,16 @@ export default function CourseRegisterSection({
     }
   }, [user]);
 
-  const alreadyRegistered = isRegistered(courseSlug);
-  const existingEnrollment = enrollments.find((item) => item.courseSlug === courseSlug);
+  useEffect(() => {
+    if (existingEnrollment?.status === "rejected") {
+      setFormData((prev) => ({
+        ...prev,
+        phone: prev.phone || existingEnrollment.phone || "",
+        college: prev.college || existingEnrollment.college || "",
+        year: existingEnrollment.year || prev.year,
+      }));
+    }
+  }, [existingEnrollment]);
 
   function validateForm(): boolean {
     if (
@@ -175,9 +186,7 @@ export default function CourseRegisterSection({
             <h3 className="text-xl font-bold text-[#0b1f45] mb-1">
               {existingEnrollment?.status === "approved"
                 ? "You are enrolled in this course!"
-                : existingEnrollment?.status === "rejected"
-                  ? "This registration was not approved."
-                  : "Your registration is saved."}
+                : "Your registration is saved."}
             </h3>
             <p className="text-sm text-[#5b6e86] max-w-md mx-auto mb-6">
               {existingEnrollment?.status === "pending"
@@ -237,6 +246,12 @@ export default function CourseRegisterSection({
           </div>
         ) : (
           <div className="bg-white rounded-[24px] border border-[#dde8f5] p-7 sm:p-9 shadow-sm">
+            {existingEnrollment?.status === "rejected" && (
+              <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                Your previous application was not approved. Review your details below and submit a new application.
+              </div>
+            )}
+
             {/* GOOGLE AUTO-FILL HELPER */}
             {!user ? (
               <div className="mb-6 p-4 rounded-2xl bg-[#f5f9ff] border border-[#dde8f5] flex items-center justify-between gap-4">

@@ -440,8 +440,16 @@ export default function StudentDashboardPage() {
                           </div>
                         </div>
                       ) : (
-                        <div className="rounded-2xl bg-red-50 border border-red-200 p-5 text-sm text-red-800">
-                          Your registration was rejected. Please contact EXSi Technologies if you need help.
+                        <div className="rounded-2xl bg-red-50 border border-red-200 p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                          <p className="text-sm text-red-800">
+                            Your previous application was not approved. You can review your details and apply again.
+                          </p>
+                          <Link
+                            href={`/courses/${item.courseSlug}#register-section`}
+                            className="btn btn-primary !py-2.5 !px-5 text-xs shrink-0"
+                          >
+                            Apply again
+                          </Link>
                         </div>
                       )}
                     </div>
@@ -528,7 +536,15 @@ export default function StudentDashboardPage() {
                           className="w-full py-2.5 px-4 rounded-full font-bold text-xs text-white bg-[#0e6fd0] hover:bg-[#0a58a8] transition-all flex items-center justify-center gap-2 shadow-[0_4px_14px_rgba(14,111,208,0.2)] disabled:opacity-60 cursor-pointer"
                         >
                           <CreditCard size={14} />
-                          <span>{processingSlug === c.slug ? "Opening Razorpay..." : `Pay ${c.fee} with Razorpay`}</span>
+                          <span>
+                            {processingSlug === c.slug
+                              ? "Opening Razorpay..."
+                              : enrollments.some(
+                                  (item) => item.courseSlug === c.slug && item.status === "rejected"
+                                )
+                                ? "Apply again & pay"
+                                : `Pay ${c.fee} with Razorpay`}
+                          </span>
                           <Zap size={13} className="text-amber-300" />
                         </button>
                       )}

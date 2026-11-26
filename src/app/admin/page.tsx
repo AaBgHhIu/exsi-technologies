@@ -16,7 +16,6 @@ import {
   Star,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
-import { GoogleButton, GoogleIcon } from "@/components/auth/GoogleButton";
 import { FeedbackRecord, getFeedback } from "@/lib/feedback";
 import {
   getAllRegistrations,
@@ -26,7 +25,7 @@ import {
 } from "@/lib/registrations";
 
 export default function AdminPage() {
-  const { user, isAdmin, loading, signOut, signInWithGoogle } = useAuth();
+  const { user, isAdmin, loading, signOut } = useAuth();
   const [registrations, setRegistrations] = useState<AdminRegistrationRecord[]>([]);
   const [feedback, setFeedback] = useState<FeedbackRecord[]>([]);
   const [activeTab, setActiveTab] = useState<"all" | "pending" | "approved" | "rejected">("all");
@@ -161,38 +160,27 @@ export default function AdminPage() {
           </span>
 
           <h1 className="text-2xl sm:text-3xl font-bold text-[#0b1f45] mb-2">
-            Administrator Authentication Required
+            Administrator Access Only
           </h1>
 
           <p className="text-sm text-[#5b6e86] max-w-md mx-auto mb-6 leading-relaxed">
-            This administration portal is restricted to authorized EXSi managers. Please sign in with your official admin Google account (e.g. <strong>tbabhimanue06@gmail.com</strong> or <strong>basilthankachan274@gmail.com</strong>).
+            This portal is for authorized EXSi administrators. Students can continue using the student dashboard; administrator access is granted automatically to approved accounts through the same sign-in.
           </p>
 
-          {user && (
-            <div className="mb-6 p-3.5 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 text-left">
-              <strong>Currently logged in as:</strong> {user.email} (Student Access). This email does not have administrator privileges.
-            </div>
-          )}
-
           <div className="space-y-3">
-            <GoogleButton
-              onClick={() =>
-                signInWithGoogle({
-                  email: "tbabhimanue06@gmail.com",
-                  name: "Abhimanue (Admin)",
-                })
-              }
-              label="Sign In with Admin Google Account"
-              variant="primary"
-              className="py-3.5 text-sm"
-            />
-
-            {user && (
+            {!user ? (
+              <Link
+                href="/login"
+                className="btn btn-primary w-full !py-3.5 text-sm"
+              >
+                Continue to Sign In
+              </Link>
+            ) : (
               <button
                 onClick={() => signOut()}
                 className="w-full py-2.5 px-4 text-xs font-semibold text-[#5b6e86] hover:text-[#0b1f45] transition-colors"
               >
-                Sign out of current account
+                Sign out to switch accounts
               </button>
             )}
           </div>
