@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { siteConfig } from "@/config/site";
-import { Mail, Phone, MapPin, Send, MessageSquare, Linkedin } from "lucide-react";
+import { Mail, Phone, MapPin, MessageSquare, Linkedin } from "lucide-react";
+import { ContactEnquiryForm } from "@/components/contact/ContactEnquiryForm";
 
 export const metadata: Metadata = {
   title: "Contact",
@@ -94,70 +95,7 @@ export default function ContactPage() {
                 Fill in your details and we will get back to you shortly.
               </p>
 
-              <form
-                action={`mailto:${siteConfig.email}`}
-                method="GET"
-                className="flex flex-col gap-4 text-xs font-semibold text-[#41546b]"
-              >
-                <div>
-                  <label className="block mb-1.5">Full name</label>
-                  <input
-                    name="name"
-                    type="text"
-                    required
-                    placeholder="Your name"
-                    className="w-full rounded-xl border border-[#cfdae5] px-4 py-3 text-sm text-[#071a33] placeholder:text-slate-400 focus:outline-none focus:border-[#0878d1] focus:ring-1 focus:ring-[#0878d1] transition"
-                  />
-                </div>
-
-                <div>
-                  <label className="block mb-1.5">Email address</label>
-                  <input
-                    name="email"
-                    type="email"
-                    required
-                    placeholder="you@example.com"
-                    className="w-full rounded-xl border border-[#cfdae5] px-4 py-3 text-sm text-[#071a33] placeholder:text-slate-400 focus:outline-none focus:border-[#0878d1] focus:ring-1 focus:ring-[#0878d1] transition"
-                  />
-                </div>
-
-                <div>
-                  <label className="block mb-1.5">I am interested in</label>
-                  <select
-                    name="subject"
-                    className="w-full rounded-xl border border-[#cfdae5] px-4 py-3 text-sm text-[#071a33] bg-white focus:outline-none focus:border-[#0878d1] focus:ring-1 focus:ring-[#0878d1] transition"
-                  >
-                    <option value="Course enquiry">Course enquiry</option>
-                    <option value="Workshop / institutional collaboration">Workshop / institutional collaboration</option>
-                    <option value="Engineering services">Engineering services</option>
-                    <option value="General enquiry">General enquiry</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block mb-1.5">Message</label>
-                  <textarea
-                    name="body"
-                    required
-                    rows={4}
-                    placeholder="How can we help?"
-                    className="w-full rounded-xl border border-[#cfdae5] px-4 py-3 text-sm text-[#071a33] placeholder:text-slate-400 focus:outline-none focus:border-[#0878d1] focus:ring-1 focus:ring-[#0878d1] transition"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full py-3.5 px-6 rounded-full text-xs font-bold text-white transition-all hover:-translate-y-0.5 flex items-center justify-center gap-2 mt-2 shadow-md cursor-pointer"
-                  style={{
-                    background: "linear-gradient(110deg, #0878d1 0%, #0755a3 100%)",
-                  }}
-                >
-                  Send enquiry &rarr;
-                </button>
-              </form>
-              <p className="mt-3 text-xs text-slate-500">
-                Submitting opens your default email app. No enquiry is sent until you send the email there.
-              </p>
+              <ContactEnquiryForm />
             </div>
           </div>
         </div>

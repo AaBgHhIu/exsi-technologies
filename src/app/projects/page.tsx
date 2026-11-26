@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { siteConfig } from "@/config/site";
 import { CheckCircle2, MessageSquare } from "lucide-react";
+import { sendEnquiry } from "@/lib/enquiries";
 
 const services = [
   {
@@ -25,18 +26,34 @@ const services = [
 export default function ProjectsPage() {
   const [submitted, setSubmitted] = useState(false);
   const [formStatus, setFormStatus] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState(false);
 
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     if (formData.get("website")) return;
-    const subject = encodeURIComponent("EXSI project enquiry");
-    const body = encodeURIComponent(
-      `Name: ${formData.get("name")}\nEmail: ${formData.get("email")}\nPhone: ${formData.get("phone")}\nBudget: ${formData.get("budget")}\n\nProject details:\n${formData.get("project_idea")}`
-    );
-    window.location.href = `mailto:${siteConfig.email}?subject=${subject}&body=${body}`;
-    setFormStatus(`Your email app should open with a draft. The enquiry is sent only after you send that email. If it does not open, email ${siteConfig.email}.`);
-    setSubmitted(true);
+    setIsSubmitting(true);
+    setFormStatus("");
+    setSubmitError(false);
+    try {
+      await sendEnquiry({
+        name: String(formData.get("name") || ""),
+        email: String(formData.get("email") || ""),
+        interest: "Project quote request",
+        message: String(formData.get("project_idea") || ""),
+        phone: String(formData.get("phone") || ""),
+        budget: String(formData.get("budget") || ""),
+        website: String(formData.get("website") || ""),
+      });
+      setFormStatus("Your project enquiry has been sent to the EXSI team. We will get back to you soon.");
+      setSubmitted(true);
+    } catch (error) {
+      setSubmitError(true);
+      setFormStatus(error instanceof Error ? error.message : "We could not send your enquiry. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   const whatsappMessage = encodeURIComponent(
@@ -111,7 +128,7 @@ export default function ProjectsPage() {
                 <div className="w-14 h-14 rounded-full bg-emerald-50 text-emerald-600 grid place-items-center mx-auto mb-4 border border-emerald-200">
                   <CheckCircle2 size={32} />
                 </div>
-                <h3 className="text-2xl font-bold text-[#071a33] mb-2">Continue your enquiry by email</h3>
+                <h3 className="text-2xl font-bold text-[#071a33] mb-2">Enquiry sent</h3>
                 <p className="text-slate-600 text-sm max-w-md mx-auto leading-relaxed mb-6">
                   {formStatus}
                 </p>
@@ -203,12 +220,13 @@ export default function ProjectsPage() {
                   <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
                     <button
                       type="submit"
+                      disabled={isSubmitting}
                       className="w-full sm:flex-1 py-3.5 px-6 rounded-full text-xs font-bold text-white transition-all hover:-translate-y-0.5 flex items-center justify-center gap-2 shadow-md cursor-pointer"
                       style={{
                         background: "linear-gradient(110deg, #0878d1 0%, #065ea3 100%)",
                       }}
                     >
-                      Send Enquiry &rarr;
+                      {isSubmitting ? "Sending..." : "Send Enquiry →"}
                     </button>
                     {whatsappUrl && <a
                       href={whatsappUrl}
@@ -219,6 +237,11 @@ export default function ProjectsPage() {
                       <MessageSquare size={14} /> WhatsApp Us
                     </a>}
                   </div>
+                  {submitError && formStatus && (
+                    <p className="text-sm text-red-600" role="alert">
+                      {formStatus}
+                    </p>
+                  )}
                 </form>
               </div>
             )}

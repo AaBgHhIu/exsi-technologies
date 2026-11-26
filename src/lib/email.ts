@@ -1,52 +1,46 @@
 /**
  * Transactional Email Dispatcher via Resend
  *
- * If RESEND_API_KEY is missing or invalid, email dispatch is skipped
- * gracefully without throwing any runtime errors.
+ * Email is sent through Resend. Missing configuration and delivery failures
+ * are returned to the caller so it can report them to the user.
  */
 
 export async function sendEmail({
   to,
+  replyTo,
   subject,
   html,
 }: {
   to: string;
+  replyTo?: string;
   subject: string;
   html: string;
 }) {
-  const apiKey = process.env.RESEND_API_KEY;
-
-  if (!apiKey || apiKey.trim() === "" || apiKey === "re_your_key_here") {
-    // Silently skip if key is not configured
-    console.info(`[Email skipped - no API key]: To ${to} | Subject: ${subject}`);
-    return { success: true, skipped: true };
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  const from = process.env.RESEND_FROM_EMAIL?.trim();
+  if (!apiKey || !from) {
+    return { success: false, reason: "configuration" as const };
   }
 
-  try {
-    const from = process.env.RESEND_FROM_EMAIL || "EXSi Technologies <onboarding@resend.dev>";
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from,
-        to: [to],
-        subject,
-        html,
-      }),
-    });
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from,
+      to: [to],
+      ...(replyTo ? { reply_to: replyTo } : {}),
+      subject,
+      html,
+    }),
+  });
 
-    if (!res.ok) {
-      const err = await res.text();
-      console.warn("[Resend Email Error]:", err);
-      return { success: false, error: err };
-    }
-
-    return { success: true };
-  } catch (err) {
-    console.warn("[Resend Email Exception]:", err);
-    return { success: false, error: String(err) };
+  if (!res.ok) {
+    console.error("Resend rejected an email request:", res.status, await res.text());
+    return { success: false, reason: "provider" as const };
   }
+
+  return { success: true as const };
 }

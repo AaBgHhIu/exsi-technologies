@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { siteConfig } from "@/config/site";
+import { sendEnquiry } from "@/lib/enquiries";
 
 export function ContactSection() {
   const [formData, setFormData] = useState({
@@ -11,22 +12,24 @@ export function ContactSection() {
     message: "",
   });
   const [status, setStatus] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [hasError, setHasError] = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const subject = encodeURIComponent("EXSI website enquiry: " + formData.interest);
-    const body = encodeURIComponent(
-      "Name: " +
-        formData.name +
-        "\nEmail: " +
-        formData.email +
-        "\nInterest: " +
-        formData.interest +
-        "\n\nMessage:\n" +
-        formData.message
-    );
-    setStatus("Your email application should open with the enquiry. If it does not, email us directly at " + siteConfig.email + ".");
-    window.location.href = `mailto:${siteConfig.email}?subject=${subject}&body=${body}`;
+    setIsSubmitting(true);
+    setStatus("");
+    setHasError(false);
+    try {
+      await sendEnquiry(formData);
+      setStatus("Your enquiry has been sent to the EXSI team. We will get back to you soon.");
+      setFormData({ name: "", email: "", interest: "Course enquiry", message: "" });
+    } catch (error) {
+      setHasError(true);
+      setStatus(error instanceof Error ? error.message : "We could not send your enquiry. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -165,11 +168,14 @@ export function ContactSection() {
               </div>
 
               <div className="sm:col-span-2">
-                <button type="submit" className="btn btn-primary">
-                  Send enquiry
+                <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
+                  {isSubmitting ? "Sending..." : "Send enquiry"}
                 </button>
                 {status && (
-                  <p className="mt-2.5 text-sm text-[#0a58a8] font-medium" role="status">
+                  <p
+                    className={`mt-2.5 text-sm font-medium ${hasError ? "text-red-600" : "text-[#0a58a8]"}`}
+                    role={hasError ? "alert" : "status"}
+                  >
                     {status}
                   </p>
                 )}
@@ -179,7 +185,7 @@ export function ContactSection() {
         </div>
 
         <p className="mt-5 text-[0.88rem] text-[#5b6e86]">
-          The contact form will open your default email application. You can also contact us directly at {siteConfig.email}.
+          You can also contact us directly at {siteConfig.email}.
         </p>
       </div>
     </section>
