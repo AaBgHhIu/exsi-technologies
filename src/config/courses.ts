@@ -47,7 +47,7 @@ export const courses: Course[] = [
       "This comprehensive programme takes students from digital logic fundamentals through synthesizable RTL design, verification, and applied hardware projects. Build combinational and sequential modules, Mealy and Moore state machines, and self-checking testbenches, then apply those skills to UART controllers, clock-domain-crossing FIFOs, and a pipelined 32-bit ALU. The programme also covers simulation, synthesis checks, FPGA constraints, debugging, and project documentation.",
     duration: "4 weeks",
     mode: "Live online",
-    fee: "₹10",
+    fee: "₹1,000",
     batchStart: "Jan 1",
     level: "",
     enquiryOnly: false,
