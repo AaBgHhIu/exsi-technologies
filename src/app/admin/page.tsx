@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   CheckCircle2,
   XCircle,
@@ -9,7 +10,6 @@ import {
   Download,
   Search,
   ShieldCheck,
-  ShieldAlert,
   ExternalLink,
   LogOut,
   Trash2,
@@ -25,12 +25,19 @@ import {
 } from "@/lib/registrations";
 
 export default function AdminPage() {
+  const router = useRouter();
   const { user, isAdmin, loading, signOut } = useAuth();
   const [registrations, setRegistrations] = useState<AdminRegistrationRecord[]>([]);
   const [feedback, setFeedback] = useState<FeedbackRecord[]>([]);
   const [activeTab, setActiveTab] = useState<"all" | "pending" | "approved" | "rejected">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [actionNotice, setActionNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!loading && !isAdmin) {
+      router.replace(user ? "/dashboard" : "/login");
+    }
+  }, [isAdmin, loading, router, user]);
 
   // Load registrations shared through Supabase.
   useEffect(() => {
@@ -146,57 +153,9 @@ export default function AdminPage() {
     );
   }
 
-  // If NOT admin or NOT logged in, show access guard
+  // Keep the admin portal hidden while a non-admin is redirected.
   if (!isAdmin) {
-    return (
-      <div className="min-h-[85vh] flex items-center justify-center py-16 px-4 bg-[#f5f9ff]">
-        <div className="w-full max-w-lg bg-white rounded-[24px] border border-[#dde8f5] p-8 sm:p-10 shadow-[0_12px_34px_rgba(14,111,208,0.08)] text-center">
-          <div className="w-16 h-16 rounded-full bg-amber-50 text-amber-600 grid place-items-center mx-auto mb-4 border border-amber-200">
-            <ShieldAlert size={32} />
-          </div>
-
-          <span className="inline-block py-1 px-3 rounded-full bg-amber-50 text-amber-800 text-xs font-semibold mb-2">
-            Admin Access Restricted
-          </span>
-
-          <h1 className="text-2xl sm:text-3xl font-bold text-[#0b1f45] mb-2">
-            Administrator Access Only
-          </h1>
-
-          <p className="text-sm text-[#5b6e86] max-w-md mx-auto mb-6 leading-relaxed">
-            This portal is for authorized EXSi administrators. Students can continue using the student dashboard; administrator access is granted automatically to approved accounts through the same sign-in.
-          </p>
-
-          <div className="space-y-3">
-            {!user ? (
-              <Link
-                href="/login"
-                className="btn btn-primary w-full !py-3.5 text-sm"
-              >
-                Continue to Sign In
-              </Link>
-            ) : (
-              <button
-                onClick={() => signOut()}
-                className="w-full py-2.5 px-4 text-xs font-semibold text-[#5b6e86] hover:text-[#0b1f45] transition-colors"
-              >
-                Sign out to switch accounts
-              </button>
-            )}
-          </div>
-
-          <div className="mt-8 pt-6 border-t border-[#dde8f5] text-xs text-[#5b6e86] flex items-center justify-center gap-4">
-            <Link href="/" className="hover:text-[#0e6fd0] transition-colors">
-              Return Home
-            </Link>
-            <span>&bull;</span>
-            <Link href="/dashboard" className="hover:text-[#0e6fd0] transition-colors">
-              Student Dashboard
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   // --- ADMIN PORTAL VIEW ---
